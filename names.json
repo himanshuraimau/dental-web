@@ -1,0 +1,10 @@
+{
+  "name": "Ivorel Dental",
+  "coined": true,
+  "searched": true,
+  "queries": [
+    { "q": "\"Ivorel\" dental clinic", "result": "no business with that exact name; only similar names (Ivory Dental, Ivrie Dental)" },
+    { "q": "ivorel.com", "result": "no site found for that domain" }
+  ],
+  "note": "stand-in until the clinic gives its real name"
+}

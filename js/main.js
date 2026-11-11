@@ -1,124 +1,70 @@
-/* =========================================================
-   Dental Clinic Landing Page — main.js
-   ========================================================= */
+/* Ivorel Dental: the page's own script.
+   The menu, phone sheet, hovers, form checks and the photo story are run by the kit (assets/system.js,
+   motion.js, layout.js). This file only does two things the kit cannot know:
+   1. builds every WhatsApp link from the number below;
+   2. sends the booking form to the clinic's Google Sheet (see google-apps-script.gs). */
 
-/* ---- EDIT THESE: used for every WhatsApp / Call link on the page ---- */
+/* ---- EDIT THESE ---- */
 const CONFIG = {
-  clinicName: "[[CLINIC_NAME]]",
+  clinicName: "Ivorel Dental",
   whatsapp: "919800000000", // country code + number, no "+" or spaces
-  phone: "+91 98000 00000"  // shown as text and used for tel: links
+  // Google Apps Script Web App URL (see google-apps-script.gs for setup)
+  sheetUrl: "https://script.google.com/macros/s/AKfycbxc21tsTWuO3uZgaS14Y78rGDVuOQhx0WWfHw1Smtnc_uzDYjknol5gVSJMX6vrsuGV/exec"
 };
 
-document.documentElement.classList.remove("no-js");
-
-const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-/* ---------- 1. WhatsApp & Call link builder ---------- */
-function whatsappUrl(service) {
-  const msg = service
-    ? `Hi ${CONFIG.clinicName}, I'd like to book an appointment for ${service}.`
-    : `Hi ${CONFIG.clinicName}, I'd like to book an appointment.`;
-  return `https://wa.me/${CONFIG.whatsapp}?text=${encodeURIComponent(msg)}`;
-}
-
+/* ---------- 1. WhatsApp links ---------- */
+const waText = encodeURIComponent(`Hi ${CONFIG.clinicName}, I'd like to book an appointment.`);
 document.querySelectorAll("[data-whatsapp]").forEach((el) => {
-  el.href = whatsappUrl(el.dataset.service);
+  el.href = `https://wa.me/${CONFIG.whatsapp}?text=${waText}`;
 });
 
-const telHref = "tel:" + CONFIG.phone.replace(/[^\d+]/g, "");
-document.querySelectorAll("[data-call]").forEach((el) => {
-  el.href = telHref;
-  if (el.hasAttribute("data-phone-text")) el.textContent = CONFIG.phone;
-});
+const year = document.getElementById("year");
+if (year) year.textContent = new Date().getFullYear();
 
-/* ---------- 2. Mobile menu toggle ---------- */
-const header = document.getElementById("header");
-const nav = document.getElementById("nav");
-const navToggle = document.getElementById("navToggle");
+/* ---------- 2. Booking form -> Google Sheet ----------
+   system.js checks the fields and shows each error under its field. When every field passes, this handler
+   stops the browser's own send and posts the form URL-encoded (the only body Apps Script reads into
+   e.parameter). The sent line shows only after the Sheet answers. */
+const form = document.getElementById("bookingForm");
+if (form) {
+  const status = form.querySelector("[data-form-status]");
+  const button = form.querySelector("[type=submit]");
+  const say = (text) => { if (status) status.textContent = text; };
+  const configured = /^https:\/\/script\.google\.com\//.test(CONFIG.sheetUrl);
 
-function setMenu(open) {
-  nav.classList.toggle("open", open);
-  header.classList.toggle("menu-open", open);
-  navToggle.setAttribute("aria-expanded", String(open));
-  navToggle.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+  const date = form.elements.date;
+  if (date) date.min = new Date().toISOString().split("T")[0];
+
+  form.addEventListener("submit", async (e) => {
+    if (!form.checkValidity()) return; // system.js shows the errors
+    e.preventDefault();
+
+    // A bot filled the hidden field: drop it quietly.
+    if (form.elements.website.value) { form.reset(); return; }
+
+    if (!configured) {
+      say("Not sent: the booking form is not connected yet. Please message us on WhatsApp.");
+      return;
+    }
+
+    const data = new URLSearchParams(new FormData(form));
+    data.delete("website");
+
+    const wait = setTimeout(() => say("Sending"), 300);
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+    try {
+      const res = await fetch(CONFIG.sheetUrl, { method: "POST", body: data });
+      if (!res.ok) throw new Error(String(res.status));
+      clearTimeout(wait);
+      form.reset();
+      say(form.dataset.sent);
+    } catch {
+      clearTimeout(wait);
+      say("Not sent: the connection failed. Your details are still here; try again or message us on WhatsApp.");
+    } finally {
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+    }
+  });
 }
-
-navToggle.addEventListener("click", () => setMenu(!nav.classList.contains("open")));
-
-nav.querySelectorAll("a").forEach((link) => link.addEventListener("click", () => setMenu(false)));
-
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") setMenu(false);
-});
-
-/* ---------- 3. Sticky header style ---------- */
-function onScroll() {
-  header.classList.toggle("scrolled", window.scrollY > 50);
-}
-window.addEventListener("scroll", onScroll, { passive: true });
-onScroll();
-
-/* ---------- 4. Active nav link ---------- */
-const navLinks = document.querySelectorAll(".nav__link");
-const sectionObserver = new IntersectionObserver(
-  (entries) => {
-    entries.forEach((entry) => {
-      if (!entry.isIntersecting) return;
-      navLinks.forEach((link) =>
-        link.classList.toggle("active", link.getAttribute("href") === "#" + entry.target.id)
-      );
-    });
-  },
-  { rootMargin: "-45% 0px -50% 0px" }
-);
-document.querySelectorAll("main section[id]").forEach((s) => sectionObserver.observe(s));
-
-/* ---------- 5. Reveal on scroll ---------- */
-const revealObserver = new IntersectionObserver(
-  (entries, obs) => {
-    entries.forEach((entry) => {
-      if (!entry.isIntersecting) return;
-      entry.target.classList.add("visible");
-      obs.unobserve(entry.target);
-    });
-  },
-  { threshold: 0.12 }
-);
-document.querySelectorAll(".reveal").forEach((el, i) => {
-  // small stagger for items in the same grid
-  el.style.transitionDelay = `${(i % 3) * 80}ms`;
-  revealObserver.observe(el);
-});
-
-/* ---------- 6. Counter animation ---------- */
-function animateCount(el) {
-  const target = Number(el.dataset.count);
-  if (reduceMotion) {
-    el.textContent = target.toLocaleString("en-IN");
-    return;
-  }
-  const duration = 1600;
-  const start = performance.now();
-  function tick(now) {
-    const p = Math.min((now - start) / duration, 1);
-    const eased = 1 - Math.pow(1 - p, 3);
-    el.textContent = Math.round(target * eased).toLocaleString("en-IN");
-    if (p < 1) requestAnimationFrame(tick);
-  }
-  requestAnimationFrame(tick);
-}
-
-const counterObserver = new IntersectionObserver(
-  (entries, obs) => {
-    entries.forEach((entry) => {
-      if (!entry.isIntersecting) return;
-      animateCount(entry.target);
-      obs.unobserve(entry.target);
-    });
-  },
-  { threshold: 0.6 }
-);
-document.querySelectorAll("[data-count]").forEach((el) => counterObserver.observe(el));
-
-/* ---------- 7. Footer year ---------- */
-document.getElementById("year").textContent = new Date().getFullYear();
